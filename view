@@ -1,39 +1,72 @@
 view: audit_log_pdt {
-  # Definicja trwałej tabeli pochodnej (PDT)
+  # Definicja Trwałej Tabeli Pochodnej (PDT)
   derived_table: {
-    # Podstawowe zapytanie SQL, które buduje Twoją tabelę
-    # Zastąp `twoj_projekt...` pełną ścieżką do tabeli źródłowej
-    sql: SELECT
-            timestamp,
-            protopayload_auditlog
-         FROM `twoj_projekt.twoj_dataset.twoja_tabela_zrodlowa`
-         ;;
+    # Mówi tej PDT, aby słuchała "czujnika" zdefiniowanego w modelu
+    datagroup_trigger: audit_log_trigger
 
-    # Mówi tej PDT, aby przebudowała się, gdy datagroup 
-    # 'manual_load_trigger' zostanie uruchomiona
-    datagroup_trigger: manual_load_trigger
+    # --- Kluczowa optymalizacja kosztów ---
+
+    # 1. Włączamy tryb przyrostowy. Kluczem jest grupa wymiarów "event_time".
+    #    Looker będzie śledzić ostatnią przetworzoną wartość z tej grupy.
+    increment_key: "event_time"
+    
+    # 2. Bezpieczny bufor na dane, które mogły spłynąć z opóźnieniem.
+    increment_offset: "1 hours"
+
+    # 3. Partycjonowanie tabeli PDT w BigQuery (dalsza oszczędność).
+    #    Używamy naszej nowej kolumny 'event_date'.
+    partition_keys: ["event_date"]
+
+    # 4. Zapytanie SQL budujące PDT
+    sql: SELECT
+            timestamp AS event_timestamp,
+            protopayload_auditlog,
+            
+            -- OTO TWOJA FUNKCJA:
+            -- Tworzy kolumnę 'event_date' w formacie YYYY-MM-DD
+            -- Użyjemy jej do partycjonowania i udostępnimy użytkownikowi
+            DATE(timestamp) AS event_date
+            
+         FROM `twoj_projekt.twoj_dataset.twoja_tabela_zrodlowa`
+         WHERE
+            # Warunek przyrostowy: Looker automatycznie podstawi tu
+            # ostatnią przetworzoną wartość 'timestamp'
+            timestamp > {{.sql_last_value}}
+         ;;
   }
 
-  # Definicja pól, których będziesz używać w Explore
+  # --- Definicje Pól (Wymiarów) ---
 
-  # Grupa wymiarów dla Twojego timestampu
-  dimension_group: event {
+  # 1. Główna grupa wymiarów dla czasu
+  #    Udostępnia wszystkie timeframes (date, time, week, month...)
+  dimension_group: event_time {
+    label: "Czas Zdarzenia"
     type: time
-    description: "Data i czas załadowania"
-    # 'datatype' jest ważne dla BigQuery przy obsłudze TIMESTAMP
+    # Ważne dla BigQuery
     datatype: timestamp 
     timeframes: [
       raw,
       time,
-      date,
+      date,  # To pole będzie miało format YYYY-MM-DD
       week,
       month,
+      quarter,
       year
     ]
-    sql: ${TABLE}.timestamp ;;
+    # Wskazuje na oryginalną kolumnę timestamp w naszej PDT
+    sql: ${TABLE}.event_timestamp ;;
   }
 
-  # Wymiar dla danych logu
+  # 2. Wymiar dla Twojej funkcji YYYY-MM-DD (używany do partycjonowania)
+  #    Ukrywamy go, ponieważ 'event_time_date' (z grupy powyżej)
+  #    robi to samo i jest lepiej zorganizowane dla użytkownika.
+  dimension: event_date {
+    type: date
+    hidden: yes
+    sql: ${TABLE}.event_date ;;
+  }
+  
+  # 3. Wymiar dla logów
   dimension: protopayload_auditlog {
     type: string
     description: "Zawartość logu audytowego"

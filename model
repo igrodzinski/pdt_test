@@ -1,31 +1,29 @@
 # Zastąp "twoja_konekcja_bigquery" nazwą Twojego połączenia
 connection: "twoja_konekcja_bigquery"
 
-# Definicja datagroup, która będzie zarządzać PDT
-datagroup: manual_load_trigger {
-  label: "Manual Load Trigger"
-  description: "Uruchamia się, gdy wykryje nową wartość w kolumnie timestamp, 
-                ale dane są ważne przez co najmniej 24 godziny."
+# Włącza mechanizm PDT i wskazuje domyślną datagroup
+persist_with: audit_log_trigger
 
-  # Ten SQL jest uruchamiany przez Lookera co kilka minut (zazwyczaj 5).
-  # Kiedy wynik tego zapytania się ZMIENI (bo doładujesz dane i MAX(timestamp)
-  # będzie nowy), wszystkie PDT słuchające tej grupy zostaną przebudowane.
+# Definicja Datagroup
+datagroup: audit_log_trigger {
+  label: "Trigger dla Logów Audytowych"
+  description: "Uruchamia się co 5 min, aby sprawdzić, czy MAX(timestamp) 
+                w tabeli źródłowej się zmienił (czyli czy wpadły nowe dane)."
+                
+  # To jest "czujnik" - gdy wynik tego zapytania się zmieni,
+  # Looker uruchomi przebudowę PDT (w trybie przyrostowym).
   sql_trigger: SELECT MAX(timestamp) 
                FROM `twoj_projekt.twoj_dataset.twoja_tabela_zrodlowa` ;;
 
-  # Jak długo Looker ma ufać danym w PDT, jeśli trigger się nie powiedzie.
-  # "1 dzień" oznacza, że PDT będzie używane przez 24h, 
-  # nawet jeśli nowe dane nie zostaną załadowane.
+  # Jak długo dane w PDT są "świeże". Jeśli przez 24h nie wpadną
+  # nowe dane, Looker i tak będzie używał starej wersji.
   max_cache_age: "24 hours"
 }
-
-# Włącza mechanizm PDT dla tego modelu, używając naszej nowej datagroup
-persist_with: manual_load_trigger
 
 # Dołączenie pliku widoku PDT
 include: "/views/audit_log_pdt.view.lkml" # Upewnij się, że ścieżka się zgadza
 
 # Definicja Explore, aby móc przetestować i przeglądać dane z PDT
 explore: audit_log_pdt {
-  label: "Test PDT - Audit Log"
+  label: "Test PDT - Logi Audytowe"
 }

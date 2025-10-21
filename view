@@ -1,0 +1,42 @@
+view: audit_log_pdt {
+  # Definicja trwałej tabeli pochodnej (PDT)
+  derived_table: {
+    # Podstawowe zapytanie SQL, które buduje Twoją tabelę
+    # Zastąp `twoj_projekt...` pełną ścieżką do tabeli źródłowej
+    sql: SELECT
+            timestamp,
+            protopayload_auditlog
+         FROM `twoj_projekt.twoj_dataset.twoja_tabela_zrodlowa`
+         ;;
+
+    # Mówi tej PDT, aby przebudowała się, gdy datagroup 
+    # 'manual_load_trigger' zostanie uruchomiona
+    datagroup_trigger: manual_load_trigger
+  }
+
+  # Definicja pól, których będziesz używać w Explore
+
+  # Grupa wymiarów dla Twojego timestampu
+  dimension_group: event {
+    type: time
+    description: "Data i czas załadowania"
+    # 'datatype' jest ważne dla BigQuery przy obsłudze TIMESTAMP
+    datatype: timestamp 
+    timeframes: [
+      raw,
+      time,
+      date,
+      week,
+      month,
+      year
+    ]
+    sql: ${TABLE}.timestamp ;;
+  }
+
+  # Wymiar dla danych logu
+  dimension: protopayload_auditlog {
+    type: string
+    description: "Zawartość logu audytowego"
+    sql: ${TABLE}.protopayload_auditlog ;;
+  }
+}
